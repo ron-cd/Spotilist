@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpotiList</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <h1 class="logo">SpotiList</h1>
+            <p class="subtitle">Your personal collection</p>
+            <nav>
+                <ul>
+                    <li><a href="#search-section" class="active">Discover</a></li>
+                    <li><a href="#playlist-section">Your Library</a></li>
+                    <li><a href="#add-section">Add Custom</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- 'view-section' AND 'active-view' -->
+            <section id="search-section" class="view-section active-view">
+                <h2>Discover Music</h2>
+                <form id="search-form" class="styled-form">
+                    <input type="text" id="search-term" placeholder="Search for songs or artists..." required>
+                    <button type="submit" class="btn-primary">Search</button>
+                </form>
+                <div id="search-results" class="card-grid"></div>
+            </section>
+
+            <!-- view-section' -->
+            <section id="playlist-section" class="view-section">
+                <h2>Your Library</h2>
+                <div id="playlist-container" class="card-grid"></div>
+            </section>
+
+            <!--'view-section' -->
+            <section id="add-section" class="view-section">
+                <h2>Add a Custom Song</h2>
+                <form id="add-song-form" class="styled-form">
+                    <input type="text" id="song" placeholder="Song Title" required>
+                    <input type="text" id="artist" placeholder="Artist" required>
+                    <input type="text" id="genre" placeholder="Genre" required>
+                    <input type="text" id="albumArt" placeholder="Album Art URL (Optional)">
+                    <button type="submit" class="btn-secondary">Add to Library</button>
+                </form>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Container for our pop-up notifications -->
+    <div id="toast-container"></div>
+    <script src="script.js"></script>
+</body>
+</html>
