@@ -127,7 +127,7 @@ if (searchForm) {
         const term = document.getElementById('search-term').value;
         const resultsContainer = document.getElementById('search-results');
         
-        resultsContainer.innerHTML = '<div class="loader-container"><div class="loader"></div><p style="color: #B3B3B3;">Searching iTunes...</p></div>';
+        resultsContainer.innerHTML = '<div class="loader-container"><div class="loader"></div><p style="color: #B3B3B3;">Searching Spotify...</p></div>';
         
         try {
             const response = await fetch(`/api/search?term=${term}`);
