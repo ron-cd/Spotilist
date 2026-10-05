@@ -1,77 +1,61 @@
 const express = require('express');
-const { getMusic, saveMusic } = require('./db');
+const db = require('./db'); 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 app.use(express.static('public'));
 
-// READ: Get all songs
 app.get('/api/music', (req, res) => {
-    const playlist = getMusic();
-    res.json(playlist);
+    db.all("SELECT * FROM playlist", [], (err, rows) => {
+        if (err) return res.status(500).send(err.message);
+        res.json(rows);
+    });
 });
 
-// CREATE: Add a new song
 app.post('/api/music', (req, res) => {
-    const playlist = getMusic();
-    const newSong = req.body;
-
-    const maxId = playlist.length > 0 ? Math.max(...playlist.map(song => song.id)) : 0;
-    newSong.id = maxId + 1;
-
-    playlist.push(newSong);
-    saveMusic(playlist);
+    const { song, artist, genre, albumArt, previewUrl } = req.body;
+    const query = "INSERT INTO playlist (song, artist, genre, albumArt, previewUrl) VALUES (?, ?, ?, ?, ?)";
     
-    res.status(201).json(newSong);
+    db.run(query, [song, artist, genre, albumArt, previewUrl], function(err) {
+        if (err) return res.status(500).send(err.message);
+        res.status(201).json({ id: this.lastID, song, artist, genre, albumArt, previewUrl });
+    });
 });
 
-// READ ONE: Get a single song for edit page
 app.get('/api/music/:id', (req, res) => {
-    const playlist = getMusic();
-    const songId = parseInt(req.params.id);
-    const song = playlist.find(s => s.id === songId);
-    
-    if (song) res.json(song);
-    else res.status(404).send('Song not found');
+    const query = "SELECT * FROM playlist WHERE id = ?";
+    db.get(query, [req.params.id], (err, row) => {
+        if (err) return res.status(500).send(err.message);
+        if (row) res.json(row);
+        else res.status(404).send('Song not found');
+    });
 });
 
-// UPDATE: Save changes
 app.put('/api/music/:id', (req, res) => {
-    const playlist = getMusic();
-    const songId = parseInt(req.params.id);
-    const index = playlist.findIndex(s => s.id === songId);
-
-    if (index !== -1) {
-        playlist[index] = { ...req.body, id: songId };
-        saveMusic(playlist);
-        res.json(playlist[index]);
-    } else {
-        res.status(404).send('Song not found');
-    }
+    const { song, artist, genre, albumArt, previewUrl } = req.body;
+    const query = "UPDATE playlist SET song = ?, artist = ?, genre = ?, albumArt = ?, previewUrl = ? WHERE id = ?";
+    
+    db.run(query, [song, artist, genre, albumArt, previewUrl, req.params.id], function(err) {
+        if (err) return res.status(500).send(err.message);
+        if (this.changes > 0) res.json({ id: req.params.id, song, artist, genre, albumArt, previewUrl });
+        else res.status(404).send('Song not found');
+    });
 });
 
-// DELETE: Remove a song
 app.delete('/api/music/:id', (req, res) => {
-    let playlist = getMusic();
-    const songId = parseInt(req.params.id);
-    const initialLength = playlist.length;
-
-    playlist = playlist.filter(s => s.id !== songId);
-
-    if (playlist.length < initialLength) {
-        saveMusic(playlist);
-        res.status(200).send('Song deleted');
-    } else {
-        res.status(404).send('Song not found');
-    }
+    const query = "DELETE FROM playlist WHERE id = ?";
+    db.run(query, [req.params.id], function(err) {
+        if (err) return res.status(500).send(err.message);
+        if (this.changes > 0) res.status(200).send('Song deleted');
+        else res.status(404).send('Song not found');
+    });
 });
 
-// iTUNES API: Search for songs online
 app.get('/api/search', async (req, res) => {
     try {
         const term = req.query.term;
-        const itunesUrl = `https://itunes.apple.com/search?term=${term}&entity=song&limit=15`;
+        const itunesUrl = `https://itunes.apple.com/search?term=${term}&entity=song&limit=10`;
         const response = await fetch(itunesUrl);
         const data = await response.json();
         res.json(data.results);

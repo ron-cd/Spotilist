@@ -1,22 +1,27 @@
-const fs = require('fs');
+const sqlite3 = require('sqlite3').verbose();
 
-const dbFile = 'music.json';
-
-// Function to read all songs from the JSON file
-function getMusic() {
-    try {
-        const data = fs.readFileSync(dbFile, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        // If the file doesn't exist or has an error, return an empty array
-        return [];
+// Connect to (or create) the SQLite database file
+const db = new sqlite3.Database('./music.db', (err) => {
+    if (err) {
+        console.error('Error opening database:', err.message);
+    } else {
+        console.log('Connected to the SQLite database.');
     }
-}
+});
 
-// Function to save the updated playlist back to the JSON file
-function saveMusic(data) {
-    fs.writeFileSync(dbFile, JSON.stringify(data, null, 2), 'utf8');
-}
+// Create the schema if it doesn't already exist
+db.serialize(() => {
+    db.run(`
+       CREATE TABLE IF NOT EXISTS playlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            song TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            genre TEXT NOT NULL,
+            albumArt TEXT,
+            previewUrl TEXT
+        )
+    `);
+});
 
-// Export the functions so server.js can use them
-module.exports = { getMusic, saveMusic };
+// Export the database connection so server.js can use it
+module.exports = db;
