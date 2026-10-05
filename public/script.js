@@ -1,12 +1,26 @@
-// --- TOAST NOTIFICATION LOGIC ---
+// --- VIEW SWITCHING LOGIC ---
+const navLinks = document.querySelectorAll('.sidebar nav a');
+const sections = document.querySelectorAll('.view-section');
+
+if (navLinks.length > 0) {
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            navLinks.forEach(l => l.classList.remove('active'));
+            this.classList.add('active');
+            sections.forEach(sec => sec.classList.remove('active-view'));
+            const targetId = this.getAttribute('href').substring(1); 
+            document.getElementById(targetId).classList.add('active-view');
+        });
+    });
+}
+
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     if (!container) return;
-    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.innerHTML = type === 'success' ? `<span style="color: #1DB954; font-size: 18px;">✓</span> ${message}` : `<span style="color: #e22134; font-size: 18px;">✕</span> ${message}`;
-    
     container.appendChild(toast);
     setTimeout(() => toast.classList.add('show'), 10);
     setTimeout(() => {
@@ -15,32 +29,40 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// --- NAVIGATION / VIEW SWITCHING LOGIC ---
-const navLinks = document.querySelectorAll('.sidebar nav a');
-const sections = document.querySelectorAll('.view-section');
+// --- GLOBAL AUDIO PLAYER ---
+const audio = new Audio();
+let currentPlayBtn = null;
 
-// Only run this if we are on the main page with a sidebar
-if (navLinks.length > 0) {
-    navLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault(); // Stop the browser from scrolling down
+function toggleAudio(url, btnElement, cardElement) {
+    if (!url) {
+        showToast('No audio preview available for this track', 'error');
+        return;
+    }
 
-            // 1. Remove the glowing 'active' text from all sidebar links
-            navLinks.forEach(l => l.classList.remove('active'));
-            // 2. Add 'active' text to the one we just clicked
-            this.classList.add('active');
+    if (audio.src === url && !audio.paused) {
+        audio.pause();
+        btnElement.innerHTML = '▶';
+        cardElement.classList.remove('playing');
+        return;
+    }
 
-            // 3. Hide all main sections on the page
-            sections.forEach(sec => sec.classList.remove('active-view'));
-            
-            // 4. Find the target section (e.g., "playlist-section") and show it
-            const targetId = this.getAttribute('href').substring(1); 
-            document.getElementById(targetId).classList.add('active-view');
-        });
-    });
+    if (currentPlayBtn) {
+        currentPlayBtn.innerHTML = '▶';
+        currentPlayBtn.closest('.music-card').classList.remove('playing');
+    }
+
+    audio.src = url;
+    audio.play();
+    btnElement.innerHTML = '⏸';
+    cardElement.classList.add('playing');
+    currentPlayBtn = btnElement;
+
+    audio.onended = () => {
+        btnElement.innerHTML = '▶';
+        cardElement.classList.remove('playing');
+    };
 }
 
-// --- MAIN PAGE LOGIC ---
 async function loadPlaylist() {
     const container = document.getElementById('playlist-container');
     if (!container) return; 
@@ -48,7 +70,6 @@ async function loadPlaylist() {
     try {
         const response = await fetch('/api/music');
         const playlist = await response.json();
-        
         container.innerHTML = ''; 
 
         playlist.forEach((record, index) => {
@@ -57,17 +78,28 @@ async function loadPlaylist() {
             card.style.animationDelay = `${index * 0.1}s`; 
             
             card.innerHTML = `
-                <img src="${record.albumArt}" alt="Album Art">
+                <div class="img-container">
+                    <img src="${record.albumArt}" alt="Album Art">
+                    <button class="play-btn">▶</button>
+                </div>
                 <div class="info">
                     <h3>${record.song}</h3>
                     <p>Artist: ${record.artist}</p>
                     <p>Genre: ${record.genre}</p>
                     <div style="margin-top: 10px;">
                         <a href="edit.html?id=${record.id}">Edit</a>
-                        <button onclick="deleteSong(${record.id})" class="btn-secondary" style="padding: 6px 12px; border-color: #727272; background: transparent; color: white;">Delete</button>
+                        <button class="btn-secondary delete-btn" style="padding: 6px 12px; border-color: #727272; background: transparent; color: white;">Delete</button>
                     </div>
                 </div>
             `;
+            
+            // Attach event listeners safely
+            const playBtn = card.querySelector('.play-btn');
+            playBtn.onclick = () => toggleAudio(record.previewUrl, playBtn, card);
+            
+            const deleteBtn = card.querySelector('.delete-btn');
+            deleteBtn.onclick = () => deleteSong(record.id);
+
             container.appendChild(card);
         });
     } catch (error) {
@@ -75,11 +107,16 @@ async function loadPlaylist() {
     }
 }
 
-// Function to delete a song with confirmation
 async function deleteSong(id) {
     if (confirm("Are you sure you want to remove this song from your library?")) {
         try {
             await fetch(`/api/music/${id}`, { method: 'DELETE' });
+            
+            // Stop audio if the user deletes the song currently playing
+            if (currentPlayBtn && currentPlayBtn.closest('.music-card').querySelector('.delete-btn').onclick.toString().includes(id)) {
+                audio.pause();
+            }
+            
             loadPlaylist(); 
             showToast('Song removed from your library');
         } catch (error) {
@@ -91,7 +128,6 @@ async function deleteSong(id) {
 
 loadPlaylist();
 
-// Add Custom Song
 const addForm = document.getElementById('add-song-form');
 if (addForm) {
     addForm.addEventListener('submit', async function(event) {
@@ -100,7 +136,8 @@ if (addForm) {
             song: document.getElementById('song').value,
             artist: document.getElementById('artist').value,
             genre: document.getElementById('genre').value,
-            albumArt: document.getElementById('albumArt').value || 'https://placehold.co/600x600/181818/ffffff?text=No+Art'
+            albumArt: document.getElementById('albumArt').value || 'https://placehold.co/600x600/181818/ffffff?text=No+Art',
+            previewUrl: '' // Manual entries won't have audio clips by default
         };
 
         try {
@@ -118,7 +155,6 @@ if (addForm) {
     });
 }
 
-// --- iTUNES SEARCH LOGIC ---
 const searchForm = document.getElementById('search-form');
 if (searchForm) {
     searchForm.addEventListener('submit', async function(event) {
@@ -126,13 +162,11 @@ if (searchForm) {
         
         const term = document.getElementById('search-term').value;
         const resultsContainer = document.getElementById('search-results');
-        
-        resultsContainer.innerHTML = '<div class="loader-container"><div class="loader"></div><p style="color: #B3B3B3;">Searching Spotify...</p></div>';
+        resultsContainer.innerHTML = '<div class="loader-container"><div class="loader"></div><p style="color: #B3B3B3;">Searching iTunes...</p></div>';
         
         try {
             const response = await fetch(`/api/search?term=${term}`);
             const results = await response.json();
-            
             resultsContainer.innerHTML = ''; 
             
             if (results.length === 0) {
@@ -146,16 +180,19 @@ if (searchForm) {
                 card.style.animationDelay = `${index * 0.1}s`;
                 
                 const highResImage = track.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
-
                 const songData = {
                     song: track.trackName,
                     artist: track.artistName,
                     genre: track.primaryGenreName,
-                    albumArt: highResImage
+                    albumArt: highResImage,
+                    previewUrl: track.previewUrl // Capture the audio link
                 };
                 
                 card.innerHTML = `
-                    <img src="${highResImage}" alt="Album Art">
+                    <div class="img-container">
+                        <img src="${highResImage}" alt="Album Art">
+                        <button class="play-btn">▶</button>
+                    </div>
                     <div class="info">
                         <h3>${track.trackName}</h3>
                         <p>Artist: ${track.artistName}</p>
@@ -163,9 +200,11 @@ if (searchForm) {
                     </div>
                 `;
                 
+                const playBtn = card.querySelector('.play-btn');
+                playBtn.onclick = () => toggleAudio(track.previewUrl, playBtn, card);
+
                 const addButton = document.createElement('button');
                 addButton.innerText = "Add to Library";
-                
                 addButton.onclick = async function() {
                     try {
                         await fetch('/api/music', {
@@ -173,14 +212,11 @@ if (searchForm) {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(songData)
                         });
-                        
                         loadPlaylist(); 
                         showToast('Added to your library');
-                        
                         addButton.innerText = "Added ✓";
                         addButton.disabled = true;
                     } catch (error) {
-                        console.error('Error adding song:', error);
                         showToast('Failed to add song', 'error');
                     }
                 };
@@ -189,13 +225,11 @@ if (searchForm) {
                 resultsContainer.appendChild(card);
             });
         } catch (error) {
-            console.error('Search error:', error);
             resultsContainer.innerHTML = '<p>Error loading results.</p>';
         }
     });
 }
 
-// --- EDIT PAGE LOGIC ---
 const editForm = document.getElementById('edit-song-form');
 if (editForm) {
     const urlParams = new URLSearchParams(window.location.search);
@@ -209,6 +243,7 @@ if (editForm) {
         document.getElementById('edit-artist').value = song.artist;
         document.getElementById('edit-genre').value = song.genre;
         document.getElementById('edit-albumArt').value = song.albumArt;
+        document.getElementById('edit-previewUrl').value = song.previewUrl || ''; // Load hidden URL
         document.getElementById('edit-art-preview').src = song.albumArt;
     }
 
@@ -216,14 +251,13 @@ if (editForm) {
 
     editForm.addEventListener('submit', async function(event) {
         event.preventDefault();
-        
-        // Add confirmation before saving
         if (confirm("Are you sure you want to save these changes?")) {
             const updatedSong = {
                 song: document.getElementById('edit-song').value,
                 artist: document.getElementById('edit-artist').value,
                 genre: document.getElementById('edit-genre').value,
-                albumArt: document.getElementById('edit-albumArt').value
+                albumArt: document.getElementById('edit-albumArt').value,
+                previewUrl: document.getElementById('edit-previewUrl').value // Save hidden URL
             };
 
             await fetch(`/api/music/${songId}`, {
@@ -232,7 +266,6 @@ if (editForm) {
                 body: JSON.stringify(updatedSong)
             });
 
-            // Return to main page after saving
             window.location.href = 'index.html';
         }
     });
