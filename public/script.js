@@ -29,6 +29,24 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
+// --- IMAGE FALLBACK ---
+const PLACEHOLDER_ART = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">' +
+    '<rect width="100%" height="100%" fill="#181818"/>' +
+    '<text x="50%" y="50%" fill="#727272" font-family="Arial" font-size="40" ' +
+    'text-anchor="middle" dominant-baseline="middle">No Art</text></svg>'
+);
+
+// Tries the smaller iTunes size first, then falls back to the placeholder
+function handleImgError(img) {
+    if (img.src.includes('600x600bb')) {
+        img.src = img.src.replace('600x600bb', '100x100bb');
+    } else {
+        img.onerror = null; // prevents an infinite error loop
+        img.src = PLACEHOLDER_ART;
+    }
+}
+
 // --- GLOBAL AUDIO PLAYER ---
 const audio = new Audio();
 let currentPlayBtn = null;
@@ -63,13 +81,77 @@ function toggleAudio(url, btnElement, cardElement) {
     };
 }
 
+// --- DUPLICATE PREVENTION ---
+let libraryKeys = new Set();      // title + artist keys
+let libraryPreviews = new Set();  // iTunes preview URLs
+
+// Ignores case, spaces, punctuation and accents: "Hootie  Frutti!" == "hootie frutti"
+const normalize = s =>
+    (s || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '');
+
+const getSongKey = (song, artist) => `${normalize(song)}|${normalize(artist)}`;
+
+function isInLibrary(song, artist, previewUrl) {
+    if (libraryKeys.has(getSongKey(song, artist))) return true;
+    if (previewUrl && libraryPreviews.has(previewUrl)) return true;
+    return false;
+}
+
+function rememberSong(song, artist, previewUrl) {
+    libraryKeys.add(getSongKey(song, artist));
+    if (previewUrl) libraryPreviews.add(previewUrl);
+}
+
+// Always asks the server for the current library (no browser cache), so the check is never stale
+async function fetchLibrary() {
+    const response = await fetch('/api/music?_=' + Date.now(), { cache: 'no-store' });
+    const list = await response.json();
+    libraryKeys = new Set(list.map(r => getSongKey(r.song, r.artist)));
+    libraryPreviews = new Set(list.map(r => r.previewUrl).filter(Boolean));
+    console.log('Library keys:', [...libraryKeys]); // for debugging
+    return list;
+}
+
+// Deletes extra copies of songs that were saved more than once (keeps the first copy of each)
+async function removeExistingDuplicates() {
+    if (!document.getElementById('playlist-container')) return; // only on the main page
+    try {
+        const response = await fetch('/api/music?_=' + Date.now(), { cache: 'no-store' });
+        const list = await response.json();
+        const seenKeys = new Set();
+        const seenPreviews = new Set();
+        let removed = 0;
+
+        for (const r of list) {
+            const key = getSongKey(r.song, r.artist);
+            const isDuplicate = seenKeys.has(key) || (r.previewUrl && seenPreviews.has(r.previewUrl));
+            if (isDuplicate) {
+                await fetch(`/api/music/${r.id}`, { method: 'DELETE' });
+                removed++;
+            } else {
+                seenKeys.add(key);
+                if (r.previewUrl) seenPreviews.add(r.previewUrl);
+            }
+        }
+        if (removed > 0) {
+            console.log(`Removed ${removed} duplicate song(s)`);
+            showToast(`Removed ${removed} duplicate song${removed > 1 ? 's' : ''}`);
+        }
+    } catch (error) {
+        console.error('Error removing duplicates:', error);
+    }
+}
+
 async function loadPlaylist() {
     const container = document.getElementById('playlist-container');
     if (!container) return; 
 
     try {
-        const response = await fetch('/api/music');
-        const playlist = await response.json();
+        const playlist = await fetchLibrary();
         container.innerHTML = ''; 
 
         playlist.forEach((record, index) => {
@@ -79,7 +161,7 @@ async function loadPlaylist() {
             
             card.innerHTML = `
                 <div class="img-container">
-                    <img src="${record.albumArt}" alt="Album Art">
+                    <img src="${record.albumArt || PLACEHOLDER_ART}" alt="Album Art" onerror="handleImgError(this)">
                     <button class="play-btn">▶</button>
                 </div>
                 <div class="info">
@@ -126,7 +208,8 @@ async function deleteSong(id) {
     }
 }
 
-loadPlaylist();
+// Clean up old duplicates first, then show the library
+removeExistingDuplicates().then(loadPlaylist);
 
 const addForm = document.getElementById('add-song-form');
 if (addForm) {
@@ -141,11 +224,21 @@ if (addForm) {
         };
 
         try {
-            await fetch('/api/music', {
+            await fetchLibrary(); // fresh check
+            if (isInLibrary(newSong.song, newSong.artist, newSong.previewUrl)) {
+                showToast('Already in your library', 'error');
+                return;
+            }
+
+            const res = await fetch('/api/music', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newSong)
             });
+            if (res.status === 409) {
+                showToast('Already in your library', 'error');
+                return;
+            }
             addForm.reset(); 
             loadPlaylist(); 
             showToast('Added to your library');
@@ -165,7 +258,7 @@ if (searchForm) {
         resultsContainer.innerHTML = '<div class="loader-container"><div class="loader"></div><p style="color: #B3B3B3;">Searching iTunes...</p></div>';
         
         try {
-            const response = await fetch(`/api/search?term=${term}`);
+            const response = await fetch(`/api/search?term=${encodeURIComponent(term)}`);
             const results = await response.json();
             resultsContainer.innerHTML = ''; 
             
@@ -174,12 +267,16 @@ if (searchForm) {
                 return;
             }
 
+            await fetchLibrary(); // fresh copy of the library for this search
+
             results.forEach((track, index) => {
                 const card = document.createElement('div');
                 card.className = 'music-card';
                 card.style.animationDelay = `${index * 0.1}s`;
                 
-                const highResImage = track.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg');
+                const highResImage = track.artworkUrl100
+                    ? track.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg')
+                    : PLACEHOLDER_ART;
                 const songData = {
                     song: track.trackName,
                     artist: track.artistName,
@@ -190,7 +287,7 @@ if (searchForm) {
                 
                 card.innerHTML = `
                     <div class="img-container">
-                        <img src="${highResImage}" alt="Album Art">
+                        <img src="${highResImage}" alt="Album Art" onerror="handleImgError(this)">
                         <button class="play-btn">▶</button>
                     </div>
                     <div class="info">
@@ -204,22 +301,42 @@ if (searchForm) {
                 playBtn.onclick = () => toggleAudio(track.previewUrl, playBtn, card);
 
                 const addButton = document.createElement('button');
-                addButton.innerText = "Add to Library";
-                addButton.onclick = async function() {
-                    try {
-                        await fetch('/api/music', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(songData)
-                        });
-                        loadPlaylist(); 
-                        showToast('Added to your library');
-                        addButton.innerText = "Added ✓";
-                        addButton.disabled = true;
-                    } catch (error) {
-                        showToast('Failed to add song', 'error');
-                    }
-                };
+
+                if (isInLibrary(track.trackName, track.artistName, track.previewUrl)) {
+                    addButton.innerText = "Added ✓";
+                    addButton.disabled = true;
+                } else {
+                    addButton.innerText = "Add to Library";
+                    addButton.onclick = async function() {
+                        addButton.disabled = true; // block double clicks
+                        try {
+                            await fetchLibrary(); // fresh check right before adding
+                            if (isInLibrary(track.trackName, track.artistName, track.previewUrl)) {
+                                addButton.innerText = "Added ✓";
+                                showToast('Already in your library', 'error');
+                                return;
+                            }
+
+                            const res = await fetch('/api/music', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(songData)
+                            });
+                            if (res.status === 409) {
+                                addButton.innerText = "Added ✓";
+                                showToast('Already in your library', 'error');
+                                return;
+                            }
+                            rememberSong(track.trackName, track.artistName, track.previewUrl);
+                            loadPlaylist(); 
+                            showToast('Added to your library');
+                            addButton.innerText = "Added ✓";
+                        } catch (error) {
+                            addButton.disabled = false;
+                            showToast('Failed to add song', 'error');
+                        }
+                    };
+                }
 
                 card.appendChild(addButton);
                 resultsContainer.appendChild(card);
@@ -244,7 +361,10 @@ if (editForm) {
         document.getElementById('edit-genre').value = song.genre;
         document.getElementById('edit-albumArt').value = song.albumArt;
         document.getElementById('edit-previewUrl').value = song.previewUrl || ''; // Load hidden URL
-        document.getElementById('edit-art-preview').src = song.albumArt;
+
+        const preview = document.getElementById('edit-art-preview');
+        preview.onerror = () => handleImgError(preview);
+        preview.src = song.albumArt || PLACEHOLDER_ART;
     }
 
     loadSongData();
