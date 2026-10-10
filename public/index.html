@@ -8,14 +8,15 @@
 </head>
 <body>
     <div class="app-container">
+        <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <h1 class="logo">SpotiList</h1>
             <p class="subtitle">Your personal collection</p>
             <nav>
                 <ul>
-                    <li><a href="#search-section" class="active">Discover</a></li>
-                    <li><a href="#playlist-section">Your Library</a></li>
-                    <li><a href="#add-section">Add Custom</a></li>
+                    <li><a href="#search-section" id="nav-search-section">Discover</a></li>
+                    <li><a href="#playlist-section" id="nav-playlist-section">Your Library</a></li>
+                    <li><a href="#add-section" id="nav-add-section">Add Custom</a></li>
                 </ul>
             </nav>
         </aside>
@@ -23,38 +24,51 @@
         <!-- Main Content Area -->
         <main class="main-content">
             
-            <!-- 'view-section' AND 'active-view' -->
             <section id="search-section" class="view-section active-view">
                 <h2>Discover Music</h2>
                 <form id="search-form" class="styled-form">
-                    <input type="text" id="search-term" placeholder="Search for songs or artists..." required>
-                    <button type="submit" class="btn-primary">Search</button>
+                    <input type="text" id="search-term" placeholder="Start typing to search..." autocomplete="off">
                 </form>
+                
                 <div id="search-results" class="card-grid"></div>
+
+                <!-- Wrapped featured in a div so we can hide it when searching -->
+                <div id="featured-section">
+                    <h2 style="margin-top: 24px;">Featured Picks</h2>
+                    <div id="carousel-row-1" class="carousel-container"></div>
+                    <div id="carousel-row-2" class="carousel-container" style="margin-top: 16px;"></div>
+                </div>
             </section>
 
-            <!-- view-section' -->
             <section id="playlist-section" class="view-section">
-                <h2>Your Library</h2>
+                <div class="library-header">
+                    <h2>Your Library</h2>
+                    <div class="filter-chips">
+                        <button class="chip active" onclick="setFilter('all')">All</button>
+                        <button class="chip" onclick="setFilter('itunes')">Spotify</button>
+                        <button class="chip" onclick="setFilter('custom')">Custom</button>
+                    </div>
+                </div>
                 <div id="playlist-container" class="card-grid"></div>
             </section>
 
-            <!--'view-section' -->
             <section id="add-section" class="view-section">
-                <h2>Add a Custom Song</h2>
-                <form id="add-song-form" class="styled-form">
-                    <input type="text" id="song" placeholder="Song Title" required>
-                    <input type="text" id="artist" placeholder="Artist" required>
-                    <input type="text" id="genre" placeholder="Genre" required>
-                    <input type="text" id="albumArt" placeholder="Album Art URL (Optional)">
-                    <button type="submit" class="btn-secondary">Add to Library</button>
-                </form>
+                <div class="custom-card">
+                    <h2>Create Custom Track</h2>
+                    <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 14px;">Add unreleased music, personal covers, or custom audio to your library.</p>
+                    <form id="add-song-form" class="styled-form column-form">
+                        <input type="text" id="song" placeholder="Song Title" required>
+                        <input type="text" id="artist" placeholder="Artist" required>
+                        <input type="text" id="genre" placeholder="Genre" required>
+                        <input type="text" id="albumArt" placeholder="Album Art URL (Optional)">
+                        <button type="submit" class="btn-primary" style="margin-top: 10px;">Add to Library</button>
+                    </form>
+                </div>
             </section>
 
         </main>
     </div>
 
-    <!-- Container for our pop-up notifications -->
     <div id="toast-container"></div>
     <script src="script.js"></script>
 </body>

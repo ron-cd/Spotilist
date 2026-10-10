@@ -12,7 +12,7 @@ const db = new sqlite3.Database('./music.db', (err) => {
 // Create the schema if it doesn't already exist
 db.serialize(() => {
     db.run(`
-       CREATE TABLE IF NOT EXISTS playlist (
+        CREATE TABLE IF NOT EXISTS playlist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             song TEXT NOT NULL,
             artist TEXT NOT NULL,
